@@ -95,3 +95,14 @@
   - Mirrored source files were placed into required structure for immediate development.
 - Status: Done
 - Next: Start M2 baseline pipeline implementation on data/raw/dataset_60.
+
+### Session 2026-03-22-05
+- Time: 2026-03-22 22:44:46 CST
+- Owner: juziweei / Codex
+- Goal: Formalize project-level architecture document without weekly planning.
+- Scope: `docs/design.md`, `docs/vibe_coding_protocol.md`
+- Run ID: N/A
+- Validation: Documentation consistency check against existing repository structure and governance files.
+- Result: Added a full project architecture document covering system layers, data contract, anti-leakage policy, evaluation protocol, and experiment governance.
+- Status: Done
+- Next: Implement M2 baseline pipeline according to `docs/design.md`.
