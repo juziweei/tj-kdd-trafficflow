@@ -83,15 +83,15 @@
 - Owner: juziweei / Codex
 - Goal: Download and place the KDD dataset into the PDF-required folder layout.
 - Scope: 
-  -  (data files)
-  -  (progress update)
+  - data/raw/dataset_60/{training,testing_phase1,dataSet_phase2} (data files)
+  - docs/vibe_coding_protocol.md (progress update)
 - Run ID: N/A
 - Validation: 
   - Verified folder/file layout and line counts.
   - Attempted official Tianchi API; blocked by login requirement for file download URL.
 - Result: 
   - Official metadata fetched successfully from Tianchi dataset id=60.
-  - Official file download endpoint returned .
+  - Official file download endpoint returned "user not login".
   - Mirrored source files were placed into required structure for immediate development.
 - Status: Done
-- Next: Start M2 baseline pipeline implementation on .
+- Next: Start M2 baseline pipeline implementation on data/raw/dataset_60.
