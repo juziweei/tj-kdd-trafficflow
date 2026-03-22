@@ -23,6 +23,7 @@ Competition-first implementation for highway tollgate traffic-flow forecasting, 
 3. Generate submission file to `outputs/submissions/`.
 
 ## Standards
+- Workflow log: `docs/vibe_coding_protocol.md` (must update every coding session).
 - Time-based split only (no random shuffle for validation).
 - Any feature must use only historical information at prediction time.
 - Each run should record config hash and metric summary.
