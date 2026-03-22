@@ -66,3 +66,14 @@
 - Result: 规范文档创建完成，含模板、检查清单、里程碑和日志区。
 - Status: Done
 - Next: 从下一次编码开始，每次先追加 Session，再改代码并回填结果。
+
+### Session 2026-03-22-03
+- Time: 2026-03-22 17:32:32 CST
+- Owner: juziweei / Codex
+- Goal: Add OpenAI-style governance primitives (`AGENTS.md` + local skill) and connect them with project protocol.
+- Scope: `AGENTS.md`, `.agents/skills/vibe-governance/SKILL.md`, `docs/vibe_coding_protocol.md`
+- Run ID: N/A
+- Validation: Repository policy update only (no model run)
+- Result: Added repository-level agent policy and local governance skill; protocol log updated to enforce per-session tracking.
+- Status: Done
+- Next: Start M2 implementation session with baseline data pipeline and first time-based backtest.
