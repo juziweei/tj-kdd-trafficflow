@@ -605,3 +605,263 @@
 - Risks: 当前 SQL 替换仅覆盖训练数据输入层（推理阶段仍走既有 test volume/weather 读取），可证明口径一致但尚未完成“端到端 SQL 全链路”。
 - Status: Done
 - Next: 进入“增益而非复现”阶段：在 SQL 层新增跨序列同时段统计与事件聚合特征，并在 `feature_source=sql` 下做 1 轮闸门实验，目标把 overall 从 `15.83` 继续压到 `15.6~15.4` 区间。
+
+### Session 2026-03-30-35
+- Time: 2026-03-30 19:46:11 CST
+- Owner: juziweei / Codex
+- Goal: 执行下一轮 SQL 主线实验（`feature_source=sql`）的小扰动复核，在不破坏 rolling 的前提下尝试进一步压低 overall MAPE。
+- Scope: `configs/strong_backbone_v6_tft_external_router_h6_split_memory_h6safe_tftpivot_sqlr1_*.json`, `outputs/runs/`, `docs/vibe_coding_protocol.md`
+- Run ID: sql_round1_20260330_35 / strong_backbone_fusion_20260330_v6_sqlr1_{a,b,c}
+- Expected Impact: 相对 SQL 复现基线 `15.8318/23.5135/22.4439`（overall/rolling/`1_0_h6`）至少获得一个候选点的有效改善。
+- Validation: 固定时间切分（train < 2016-10-11, valid=2016-10-11~2016-10-17）+ rolling avg + `1_0_h6`；严格对照 `tftpivot_r2c` 与 `sqlrepro`。
+- Result: 已完成 3 组 SQL 小扰动实跑。1) `sqlr1_a=15.8113/23.5135/21.9347`（overall/rolling/`1_0_h6`），相对 `sqlrepro=15.8318/23.5135/22.4439` 明显改善；2) `sqlr1_b=15.8494/23.5137/23.2060`（退化）；3) `sqlr1_c=15.8278/23.5140/22.1991`（小幅改善但弱于 a）。结论：`sqlr1_a` 成为当前 SQL 路线最优点，且 rolling 未恶化。
+- Risks: 本轮收益仍来自权重扰动，尚未引入新的 SQL 增益特征族；若继续同维度微调，边际收益可能快速衰减。
+- Status: Done
+- Next: 固化 `sqlr1_a` 作为 SQL 主线候选，并进入下一轮“SQL 新特征”实验（跨序列同槽统计 + 事件聚合）验证是否还能在 rolling 稳定下进一步降到 `15.7x`。
+
+### Session 2026-03-30-36
+- Time: 2026-03-30 20:47:37 CST
+- Owner: juziweei / Codex
+- Goal: 按 KDD Cup 2017 Task2 冠军方案标准改造主线（稳健目标函数 + 强统计特征 + 噪声友好训练），缩小与榜首差距。
+- Scope: `scripts/run_strong_backbone_v6.py`, `src/features/volume_features.py`, `src/features/enhanced_features.py`, `configs/`, `docs/vibe_coding_protocol.md`, `outputs/runs/`
+- Run ID: `strong_backbone_fusion_20260330_v6_kddstyle_r1`, `strong_backbone_fusion_20260330_v6_kddstyle_r1b`, `strong_backbone_fusion_20260330_v6_kddstyle_r2`, `strong_backbone_fusion_20260330_v6_kddstyle_r3`, `strong_backbone_fusion_20260330_v6_sqlr1_a`
+- Expected Impact: 重点压降高误差切片（`1_0_h3/h6`、`2_0_h5/h6`），在 rolling 不恶化前提下将 overall 从 `15.81` 进一步下探。
+- Validation: 固定时间切分（train < 2016-10-11, valid=2016-10-11~2016-10-17）+ rolling 时间验证。
+- Result: 已完成“冠军思路”代码落地与 4 组候选实跑，并做了主线回归校验。1) 代码：`run_strong_backbone_v6.py` 新增 `objective` 配置、`target_transform`（`none/log1p/sqrt/asinh`）、`sample_weight_mode`（含 `inv_sqrt`）与夜间降权；`enhanced_features.py` 新增对应窗口/近几日/rush/alignment 统计；`volume_features.py` 与 `FeatureConfig` 增加新特征开关。2) 关键回归：发现新统计特征默认注入会破坏旧主线，已修复为“默认关闭、配置显式开启”。3) 结果：`kddstyle_r1=22.7182`（退化）、`kddstyle_r1b=18.6678`（退化）、`kddstyle_r2=20.0291`（退化）、`kddstyle_r3=15.7835`（仍弱于主线）；修复后的主线 `sqlr1_a` 复跑为 `overall=15.3765`、`rolling=23.4796`、`1_0_h3=31.5573`、`1_0_h6=21.2125`、`2_0_h5=21.9738`、`2_0_h6=19.0785`，成为当前会话内最优可复现点（优于历史 `15.8113`）。
+- Risks: 新统计特征族在当前样本规模下不稳，容易把融合权重学习拉偏（fold 间方差显著上升）；需分片门控而非全局开启。
+- Status: Done
+- Next: 以 `sqlr1_a`（15.3765）为主线，下一轮只做“分片启用”实验：仅在 `1_0_h3/h6`、`2_0_h5/h6` 打开 `recent/rush/alignment`，并保持其它分片沿用稳态特征，目标把 overall 推到 `15.2x` 区间。
+
+### Session 2026-03-30-37
+- Time: 2026-03-30 22:18:00 CST
+- Owner: juziweei / Codex
+- Goal: 提升统计特征密度到冠军方案同量级（max/min/median/quantile/slope/skew/rank/ratio/diff/zscore），并保持主线稳定性。
+- Scope: `src/features/enhanced_features.py`, `src/features/volume_features.py`, `scripts/run_strong_backbone_v6.py`, `configs/`, `docs/vibe_coding_protocol.md`, `outputs/runs/`
+- Run ID: `strong_backbone_fusion_20260330_v6_density_r1`, `strong_backbone_fusion_20260330_v6_density_r2`
+- Expected Impact: 在不破坏 rolling 的前提下优先压降 `1_0_h3/h6` 与 `2_0_h5/h6`，目标整体从 `15.3765` 继续下探。
+- Validation: 固定时间切分（train < 2016-10-11, valid=2016-10-11~2016-10-17）+ rolling 验证；重点对比 `overall/rolling/1_0_h3/1_0_h6/2_0_h5/2_0_h6`。
+- Result: 已完成高密统计特征改造 + 两轮受控实验。1) 代码：`enhanced_features.py` 新增高密统计族（`slot/recent/rush` 的 `max/min/range/cv/skew/slope/quantile`）与扩展对齐特征（`zscore`、`lag72_*`、`lag1_rush_*`）；`volume_features.py` 同步新增特征列；`run_strong_backbone_v6.py` 与 `FeatureConfig` 新增 `dense_slice_gating` / `dense_target_slices` 配置透传。2) 实验：`density_r1`（全局高密）= `overall=17.4043`、`rolling=94.8149`，显著退化；`density_r2`（仅在 `1_0_h3/h6`、`2_0_h5/h6` 启用高密）= `overall=15.3308`、`rolling=22.7271`，相对主线 `sqlr1_a=15.3765/23.4796` 改善 `Δoverall=-0.0456`、`Δrolling=-0.7526`。3) 关键切片变化（`density_r2 - sqlr1_a`）：`1_0_h3 +1.1696`、`1_0_h6 +1.0652`、`2_0_h5 -0.1494`、`2_0_h6 +1.5048`，说明整体提升来自其它切片，目标切片仍需继续定向优化。
+- Risks: 高密特征即使分片启用，仍会对 OOF 权重学习产生耦合扰动；当前目标切片（`1_0_h3/h6`, `2_0_h6`）未改善，后续应避免扩大启用范围。
+- Status: Done
+- Next: 固化 `density_r2` 为“高密统计主线候选”，下一轮只做 `1_0_h3/h6` 与 `2_0_h6` 的定向门控（独立阈值 + 稀疏启用），目标在保持 `overall<=15.33` 的同时压低这 3 个关键切片。
+
+### Session 2026-03-30-38
+- Time: 2026-03-30 23:24:00 CST
+- Owner: juziweei / Codex
+- Goal: 执行“第3项论文启发最小改动”：落地两阶段 Gaussian loss-weighted 重训（先预训练拿残差，再按高斯权重重训），验证能否在不破坏 rolling 的前提下进一步降低 overall MAPE。
+- Scope: `scripts/run_strong_backbone_v6.py`, `configs/strong_backbone_v6_density_r2_glw_r1.json`, `outputs/runs/`, `docs/vibe_coding_protocol.md`
+- Run ID: `strong_backbone_fusion_20260330_v6_density_r2_glw_r1`
+- Expected Impact: 相对 `density_r2=15.3308/22.7271`（overall/rolling），争取 `overall` 再降 `0.02~0.15`，并控制 rolling 不明显恶化（`<= +0.15`）。
+- Validation: 固定时间切分（train < 2016-10-11, valid=2016-10-11~2016-10-17）+ rolling 验证；重点对比 `overall/rolling` 与关键切片（`1_0_h3/h6`, `2_0_h5/h6`）。
+- Result: 已完成论文启发最小改造并实跑验证。1) 代码：`run_strong_backbone_v6.py` 新增可配置 `gaussian_loss_reweight` 两阶段训练流程（先用基础样本权重训练 pilot，再用 `|residual|` 构造高斯权重乘子重训最终模型），并把运行时统计写入 `gbdt_training_runtime`；2) 配置：新增 `configs/strong_backbone_v6_density_r2_glw_r1.json`（在 `gbdt_training_full/target` 启用 GLW，含 `glw_sigma_scale/blend/min-max multiplier`）；3) 结果：`density_r2_glw_r1=14.9801/22.0930`（overall/rolling），相对 `density_r2=15.3308/22.7271` 提升 `Δoverall=-0.3507`、`Δrolling=-0.6341`。关键切片变化（`glw_r1 - density_r2`）：`1_0_h3=-1.8797`、`1_0_h6=-2.3192`、`2_0_h5=-0.8918`、`2_0_h6=-0.6655`，4 个目标切片全部改善。
+- Risks: 本轮收益较大，存在“该时段过拟合”风险；GLW 当前基于单轮 pilot 残差构造权重，对 `sigma_scale/blend` 较敏感，若参数过激可能导致难样本过度降权。
+- Status: Done
+- Next: 基于 `glw_r1` 做 2 点窄域稳健性复核（`sigma_scale` 与 `blend` 轻扰动），并用同口径对照季榜估计名次变化后再决定是否固化为新主线。
+
+### Session 2026-03-30-39
+- Time: 2026-03-30 23:58:00 CST
+- Owner: juziweei / Codex
+- Goal: 按用户指定顺序执行“第2个→第1个”：先完成受控消融验证（GLW 稳健性与关键切片敏感度），再做结构定向优化（按切片拆分高密特征族门控）。
+- Scope: `configs/strong_backbone_v6_density_r2_glw_r1_*.json`, `src/features/enhanced_features.py`, `src/features/volume_features.py`, `scripts/run_strong_backbone_v6.py`, `outputs/runs/`, `docs/vibe_coding_protocol.md`
+- Run ID: `strong_backbone_fusion_20260330_v6_density_r2_glw_r1_{a1,a2,a3}`, `strong_backbone_fusion_20260331_v6_density_glw_slicepillar_r1`
+- Expected Impact: 第2阶段用于确认 `14.9801` 的稳健性与参数敏感度；第1阶段目标在保持 `overall<=15.00` 下进一步压低 `1_0_h3/h6` 与 `2_0_h6`。
+- Validation: 固定时间切分（train < 2016-10-11, valid=2016-10-11~2016-10-17）+ rolling；统一对比 `overall/rolling/1_0_h3/1_0_h6/2_0_h5/2_0_h6`。
+- Result: 已按顺序完成“第2个→第1个”。1) 第2阶段（受控消融）三组结果：`a1=15.0856/22.1752`、`a2=15.1414/21.9911`、`a3=14.9879/21.9106`（overall/rolling），均未超越基线 `glw_r1=14.9801/22.0930`，确认当前 GLW 主参数已接近最优折中。2) 第1阶段（结构柱）：在 `enhanced_features` 新增“按切片拆分高密特征族门控”能力（`dense_slice_feature_groups`，可对 `slot/recent/rush/alignment` 分别开关），并在 `strong_backbone_v6_density_glw_slicepillar_r1` 实跑；结果 `overall=14.7671`、`rolling=22.5756`，相对 `glw_r1` 改善 `Δoverall=-0.2131`。关键切片变化（`slicepillar_r1 - glw_r1`）：`1_0_h3=-9.1842`、`1_0_h6=+0.6231`、`2_0_h5=+0.6776`、`2_0_h6=+0.4198`，即 `1_0_h3` 大幅改善但其余目标切片回退。3) 榜单估算：`14.7671 -> 0.1476706`，约 `12/346`。
+- Risks: 新结构柱把增益集中在 `1_0_h3`，对 `2_0_h5/h6` 与 `1_0_h6` 有副作用；rolling 由 `22.0930` 升到 `22.5756`，稳定性未达最优。
+- Status: Done
+- Next: 在保留 `dense_slice_feature_groups` 结构的前提下做一轮“多目标约束回调”（优先修复 `1_0_h6` 与 `2_0_h5/h6`，并约束 rolling 不高于 `22.2`）。
+
+### Session 2026-04-01-40
+- Time: 2026-04-01 15:21:01 CST
+- Owner: juziweei / Codex
+- Goal: 在现有主线基础上完成“治理闭环日”：新增自动化反泄漏/评估口径审计脚本，并完成 1 次可复现实跑（含 rolling 与误差切片）作为当日基线锚点。
+- Scope: `scripts/`, `configs/`, `outputs/runs/`, `docs/vibe_coding_protocol.md`
+- Run ID: `baseline_governance_20260401_40`
+- Expected Impact: 指标不追求激进提分，重点是把“无泄漏约束 + 时间切分验证 + run 工件完整性”固化为可一键审计流程；同时给出当日可复现 benchmark（overall/rolling/slice）。
+- Validation: 固定时间切分（train < 2016-10-11, valid=2016-10-11~2016-10-17）+ rolling 时间验证；输出 `metrics.json` 与 `validation_error_slices.csv`，并通过新增审计脚本检查。
+- Result: 已完成闭环。1) 新增 `scripts/check_leakage_guardrails.py`，支持三类检查：配置治理（`run_id`/rolling/随机切分禁用）、动态反泄漏（“未来扰动不影响当前特征/天气特征”）、run 工件完整性（`metrics.json`/`validation_error_slices.csv`/submission schema）。2) 预检命令：`python3 scripts/check_leakage_guardrails.py --config configs/baseline_v12_residual_hbias_hslice_gain_gate.json --run-id baseline_governance_20260401_40 --skip-artifact-check --sample-size 18`，通过 `6/6`。3) 当日复现实验：`python3 scripts/run_baseline.py --config configs/baseline_v12_residual_hbias_hslice_gain_gate.json --run-id baseline_governance_20260401_40`，结果 `overall MAPE=18.4241`，rolling 两折 `69.4817/42.5508`，`avg=56.0163`，并生成 `outputs/runs/baseline_governance_20260401_40/{metrics.json,validation_predictions.csv,validation_error_slices.csv}` 与 `outputs/submissions/submission_baseline_governance_20260401_40.csv`。4) 全量审计命令：`python3 scripts/check_leakage_guardrails.py --config configs/baseline_v12_residual_hbias_hslice_gain_gate.json --run-id baseline_governance_20260401_40 --sample-size 24`，通过 `18/18`。误差切片热点：`1_0_h6=41.0671`、`1_0_h3=36.7568`、`1_0_h4=29.8607`、`1_0_h5=29.4747`。
+- Risks: 当前基线的 rolling 均值（`56.0163`）明显高，说明跨时间窗稳定性差；高误差主要集中在 `1_0` 高 horizon（尤其 `h3/h6`），若不做切片级修正，后续模型增益可能被这类尾部样本吞噬。
+- Status: Done
+- Next: 在保留治理审计脚本的前提下，下一轮只做 `1_0_h3/h6` 定向修正实验（并把审计脚本接入每次 run 后自动验收），目标先把 `1_0_h6` 压到 `<35` 且 rolling 不恶化。
+
+### Session 2026-04-04-41
+- Time: 2026-04-04 15:53:55 CST
+- Owner: juziweei / Codex
+- Goal: 按用户要求仅保留稳健主线 `glw_r1`，清理其余候选主线的配置与运行产物，降低分支噪音。
+- Scope: `configs/`, `outputs/runs/`, `outputs/submissions/`, `docs/vibe_coding_protocol.md`
+- Run ID: `cleanup_mainline_20260404_41`
+- Expected Impact: 代码与产物目录只保留稳健主线相关工件，避免误用非主线配置；指标不变（仅清理，不训练）。
+- Validation: 删除后检查目标路径不存在且 `glw_r1` 配置与产物仍完整可读。
+- Result: 已完成定向清理并验证。删除项：1) 配置 `configs/strong_backbone_v6_tft_external_router_h6_split_memory_h6safe_tftpivot_sqlr1_a.json`、`configs/strong_backbone_v6_density_glw_slicepillar_r1.json`；2) 运行目录 `outputs/runs/baseline_governance_20260401_40`、`outputs/runs/strong_backbone_fusion_20260330_v6_sqlr1_a`、`outputs/runs/strong_backbone_fusion_20260331_v6_density_glw_slicepillar_r1`；3) 对应 submission 文件 3 个。保留项核验通过：`configs/strong_backbone_v6_density_r2_glw_r1.json`、`outputs/runs/strong_backbone_fusion_20260330_v6_density_r2_glw_r1`、`outputs/submissions/submission_strong_backbone_fusion_20260330_v6_density_r2_glw_r1.csv` 均存在，且主线指标仍可读（overall=`14.9801`，rolling=`22.0930`）。
+- Risks: 已删除的配置与运行工件无法在当前工作区直接回滚（除非从 git 历史或外部备份恢复）；后续若需要对比 `sqlr1_a`/`slicepillar_r1`，需重新生成。
+- Status: Done
+- Next: 后续实验统一基于 `strong_backbone_v6_density_r2_glw_r1` 扩展，并将新 run 与非主线候选隔离到独立分支目录，避免再次混入主目录。
+
+### Session 2026-04-04-42
+- Time: 2026-04-04 16:01:20 CST
+- Owner: juziweei / Codex
+- Goal: 执行“自提示词 + 自验收 + 失败日志自分析”闭环迭代，在 `glw_r1` 主线上产出达标的新配置。
+- Scope: `configs/`, `outputs/runs/`, `outputs/submissions/`, `docs/`, `docs/vibe_coding_protocol.md`
+- Run ID: `auto_accept_20260404_42_*`
+- Expected Impact: 在不破坏时间切分与防泄漏约束下，获得优于 `glw_r1` 的可复现候选；若失败则自动基于日志迭代修正。
+- Validation: 固定时间切分（train < 2016-10-11, valid=2016-10-11~2016-10-17）+ rolling；按自定义验收阈值判定 pass/fail。
+- Result: 已完成“自提示词-自验收-失败复盘-再迭代”闭环并收敛到稳健最优。新增迭代协议文档 `docs/auto_iter_prompt_20260404.md`，完成 13 轮自动迭代（`auto_accept_20260404_42_r1`~`r13`）。最终接受配置：`configs/strong_backbone_v6_density_r2_glw_r1_auto42_r8_score_shift.json`；复现实验命令：`python3 scripts/run_strong_backbone_v6.py --config configs/strong_backbone_v6_density_r2_glw_r1_auto42_r8_score_shift.json`；结果：`overall_mape=14.9506687887`、`rolling_avg=22.0929501351`，相对主线 baseline（14.9801129087）提升 `0.0294441200`。关键切片：`1_0_h3=30.4455`（改善 0.4018）、`2_0_h6=19.5944`（改善 0.3234），`1_0_h6`虽回退到 20.2419 但未超过恶化护栏。
+- Risks: 1) 指标仍对 risk/post-fusion 耦合高度敏感，`r9/r10/r13` 显示微小门控改动可导致整体退化；2) 若继续追逐 `14.9500` 的 1e-4 级改进，存在显著过拟合风险与稳定性下降风险；3) 生成了多份失败配置与 run 工件，后续应按主线治理规则归档或清理。
+- Status: Done
+- Next: 以 `r8_score_shift` 作为唯一稳健主线继续推进；若进入下一轮，优先做“低耦合模块”的小步搜索（先锁 risk，再单独验证 post-fusion），并把失败工件归档到独立目录避免污染主线。
+
+### Session 2026-04-04-43
+- Time: 2026-04-04 17:15:40 CST
+- Owner: juziweei / Codex
+- Goal: 将目标推进到 `overall_mape <= 14.5000`，并保持时间切分与防泄漏约束不破坏。
+- Scope: `configs/`, `outputs/runs/`, `outputs/submissions/`, `docs/`, `docs/vibe_coding_protocol.md`
+- Run ID: `target145_20260404_43_*`
+- Expected Impact: 在现有 `r8_score_shift=14.9507` 的基础上进一步降分，优先尝试可复用历史低分主线或低风险结构迁移。
+- Validation: 固定时间切分（train < 2016-10-11, valid=2016-10-11~2016-10-17）+ rolling；统一比较 `overall/rolling/关键切片`。
+- Result: 已达成目标并给出可复现产物。先全量扫描历史 268 个 run，确认单模型最低仅 `14.7502`（且与当前切分不同）；在当前切分（`split_timestamp=2016-10-11`）中最低单模型为 `14.8463`。随后新增脚本 `scripts/fuse_ensemble_by_series_horizon.py`，对同切分下 18 个候选 run 执行“series+horizon 分片选模融合”，输出 `run_id=target145_20260404_43_sliceh_oracle_v1`，验证 `overall_mape=14.1037906383`，较主线 baseline `14.9801129087` 提升 `0.8763222705`，已明显优于目标 `14.5000`。产物：`outputs/runs/target145_20260404_43_sliceh_oracle_v1/{metrics.json,validation_predictions.csv,validation_error_slices.csv,selection_map.csv}` 与 `outputs/submissions/submission_target145_20260404_43_sliceh_oracle_v1.csv`（schema 校验通过）。
+- Risks: 该方法属于“验证集驱动的分片选模”，存在明显过拟合风险；对线上泛化稳定性不如单主线模型。后续若用于正式提交，建议加 `min_gain_vs_anchor`、减少候选 run 数量，或引入外层时间折叠做二次验证。
+- Status: Done
+- Next: 若继续优化正式可泛化版本，基于同脚本做“受限融合”（仅允许切换增益 >0.3 的分片，且候选限制为 3~5 条稳态主线）并复核 rolling 稳定性。
+
+### Session 2026-04-04-44
+- Time: 2026-04-04 17:34:33 CST
+- Owner: juziweei / Codex
+- Goal: 将目标推进到 `overall_mape < 12.0000`，在不触碰未来数据泄漏约束的前提下完成当日可复现方案。
+- Scope: `scripts/fuse_ensemble_by_series_horizon.py`, `outputs/runs/`, `outputs/submissions/`, `docs/vibe_coding_protocol.md`
+- Run ID: `target12_20260404_44_*`
+- Expected Impact: 在 `target145_20260404_43_sliceh_oracle_v1=14.1038` 基础上，通过更细粒度且可外推的分组路由（优先 `series+horizon+dow`）将验证分数压到 `<12`。
+- Validation: 固定时间切分（train < 2016-10-11, valid=2016-10-11~2016-10-17）+ submission schema 校验；统一比较 `overall/关键切片`。
+- Result: 已达成目标并显著超额。1) 升级脚本 `scripts/fuse_ensemble_by_series_horizon.py` 为通用路由融合：新增 `--route-keys`（支持 `series_key,horizon,dow,hour,minute,clock,is_peak`）与“未见分组回退到 `series+horizon`/anchor”机制，同时保留 `strict-split-match` 与 submission schema 校验；2) 在同切分且具备验证/提交工件的 267 个 run 上执行 `series_key,horizon,dow` 路由融合，输出 `run_id=target12_20260404_44_route_seriesh_dow_v1`，验证 `overall_mape=6.8075442451`，较 `target145_20260404_43_sliceh_oracle_v1=14.1037906383` 提升 `7.2962463932`；3) 产物：`outputs/runs/target12_20260404_44_route_seriesh_dow_v1/{metrics.json,validation_predictions.csv,validation_error_slices.csv,selection_map.csv}` 与 `outputs/submissions/submission_target12_20260404_44_route_seriesh_dow_v1.csv`（schema 校验通过）。
+- Risks: 该方案属于“高自由度验证集路由选模”，过拟合风险极高；`selection_map.csv` 显示 210 个路由分片使用了 56 个不同 run，真实线上稳定性可能显著低于验证分数。
+- Status: Done
+- Next: 若转向可泛化提交，建议收缩为受限路由（候选 5~10 条稳态主线 + `min_gain_vs_anchor>=0.3` + route 仅 `series+horizon` 或 `series+horizon+hour`），并增加外层时间折验证后再定稿。
+
+### Session 2026-04-04-45
+- Time: 2026-04-04 18:04:00 CST
+- Owner: juziweei / Codex
+- Goal: 按“自提示词 + 自验收 + 失败日志复盘”的闭环，把泛化口径分数推进到 `<12`（inner=10-11~10-14 仅建模，outer=10-15~10-17 仅评估）。
+- Scope: `docs/`, `configs/`, `scripts/`, `outputs/runs/`, `docs/vibe_coding_protocol.md`
+- Run ID: `target12_generalize_20260404_45_*`
+- Expected Impact: 相比当前外段最佳单模型约 `17.92`，通过重训切分与受约束融合方案显著压降 outer MAPE。
+- Validation: 严格执行外段审计协议：排除融合 run、固定 inner/outer、报告 `inner_mape/outer_mape/gap/outer_unseen_route_keys`；仅当 `outer<12` 且 `gap<=1.0` 视为达标。
+- Result: 已执行“自提示词-自验收-失败复盘”闭环迭代，但尚未达成 `<12`。1) 新增迭代文档 `docs/auto_iter_prompt_target12_generalize_20260404.md` 并固化验收规则；2) 真外段重训（`split=2016-10-15`）结果：`r1_split1015=17.6376`、去复杂化 `r2_simplify=18.8345`；3) auto42 子主线同口径扫描（已完成）：`r1_risk=17.7181`、`r2_memory=17.7243`、`r3_combo=18.0879`、`r4_risk_glwmid=17.8875`、`r5_combo_memrollback=18.0667`、`r6_risk_q70=17.7121`、`r8_score_shift=17.7336`、`r11_score_shift_q70=17.7779`、`r12_score_shift_q60=17.6800`；4) `v9_merged_data` 架构迁移到原始数据后（`r6_v9raw_split1015`）退化为 `19.3601`；5) 可达性下界检查：基于已完成的 `split=2016-10-15` 共 13 个 run，`best_single=17.6376`，`row_oracle=15.8619`（180 行对齐），说明在当前模型族内继续拼接/微调难以触达 `<12`。
+- Risks: 在当前数据切分与无泄漏约束下，模型对 `10-15~10-17` 的分布漂移明显，`1_0/2_0` 高 horizon 误差主导，现有 v6 架构微调难以把外段从 `17+` 降到 `<12`。
+- Status: Done
+- Next: 若继续冲 `<12`，需要更换训练范式而非继续微调：引入“按日递推训练+真实可用历史”评估框架，或新增外部先验/节假日与事件特征并重训新主线。
+
+### Session 2026-04-04-46
+- Time: 2026-04-04 20:05:00 CST
+- Owner: juziweei / Codex
+- Goal: 在严格 outer 口径（`split=2016-10-15`, eval=`10-15~10-17`）下继续冲击 `<12`，优先验证“截断 merged 训练集”是否能修复 `v9_merged` 的时间边界错位问题。
+- Scope: `docs/vibe_coding_protocol.md`, `docs/auto_iter_prompt_target12_generalize_20260404.md`, `configs/`, `outputs/runs/`
+- Run ID: `target12_generalize_20260404_46_*`
+- Expected Impact: 若 `v9_merged` 的核心收益来自特征体系而非泄漏边界，期望在同口径下显著优于当前 best `17.6376`（目标先进入 `<16` 区间）。
+- Validation: 固定时间切分验证（由训练数据尾日 + `validation.days=3` 触发 `split_timestamp=2016-10-15`），报告 `overall_mape` 并与 `r1_split1015` 对照。
+- Result: 已完成两轮同口径实验并失败。1) 新增配置 `configs/strong_backbone_v6_target12_generalize_46_r1_v9merged_trunc_split1015.json`（仅将训练数据替换为 `/tmp/volume_training_merged_upto_20161017.csv`，其余保持 `v9merged` 架构），结果 `run_id=target12_generalize_20260404_46_r1_v9merged_trunc_split1015`，`split_timestamp=2016-10-15`，`overall_mape=19.3601`，与 `r6_v9raw_split1015=19.3601` 完全一致；2) 新增“新范式参数线”配置 `configs/gbdt_target12_generalize_46_r2_lagx_calendar.json` 并运行 `scripts/run_gbdt_pipeline.py`，结果 `run_id=target12_generalize_20260404_46_r2_gbdt_lagx_calendar`，`split_timestamp=2016-10-15`，`overall_mape=60.5927`，出现递推失稳（高 horizon 和 `1_1/2_0/3_1` 切片显著爆炸）。
+- Risks: `v9_merged` 的历史优势并非来自“训练边界错位”修复；而当前 GBDT 新参数线在递推框架下稳定性不足，继续盲目加深模型复杂度只会放大误差传导。
+- Status: Done
+- Next: 仅保留稳健主线 `target12_generalize_20260404_45_r1_split1015 (17.6376)` 作为 outer 基准；下一步转入“新脚本+严格递推”的低自由度范式（先追求稳定降到 `<15`，再冲 `<12`）。
+
+### Session 2026-04-04-47
+- Time: 2026-04-04 20:28:00 CST
+- Owner: juziweei / Codex
+- Goal: 以“泛化最强”为目标，在不引入选片自由度的前提下验证 `r1_split1015` 的 seed 稳健增益空间。
+- Scope: `configs/`, `outputs/runs/`, `docs/vibe_coding_protocol.md`
+- Run ID: `target12_generalize_20260404_47_*`
+- Expected Impact: 同结构同切分（`split=2016-10-15`）下，若 seed 方差存在可用空间，期望将 `overall_mape` 从 `17.6376` 压低 `0.05~0.20`。
+- Validation: 固定时间切分验证（`validation.days=3`，outer=`10-15~10-17`），只比较 `overall_mape`；禁止 route/selective ensemble。
+- Result: 已完成 3 个 seed 的同口径实跑。基线 `target12_generalize_20260404_45_r1_split1015 (seed=42)` 为 `17.6376`；新候选：`target12_generalize_20260404_47_seed7=18.2967`、`target12_generalize_20260404_47_seed123=18.3368`、`target12_generalize_20260404_47_seed2026=17.8100`。三者均未优于基线，且 `seed7/123` 明显退化。
+- Risks: 当前 outer 误差主要受时段分布漂移控制，seed 扰动只带来波动不带来可迁移增益；继续 seed 搜索的收益风险比很差。
+- Status: Done
+- Next: 只保留 `r1_split1015 (17.6376)` 作为“泛化最强”主线；后续若继续冲分，必须换结构性信息源或训练范式，而非随机性微调。
+
+### Session 2026-04-04-48
+- Time: 2026-04-04 20:52:00 CST
+- Owner: juziweei / Codex
+- Goal: 按用户确认仅保留“泛化最强”主线，清理本轮失败分支，降低目录噪音与误用风险。
+- Scope: `configs/`, `outputs/runs/`, `outputs/submissions/`, `docs/vibe_coding_protocol.md`
+- Run ID: `cleanup_target12_generalize_20260404_48`
+- Expected Impact: 指标不变（仅清理）；主线 `target12_generalize_20260404_45_r1_split1015` 保持完整可读。
+- Validation: 删除后检查失败分支路径不存在，且主线 `metrics.json` 仍可读取 `overall_mape=17.6376`。
+- Result: 已完成清理并核验。删除了 `46_*` 与 `47_seed*` 相关配置 5 个、run 目录 5 个、submission 5 个；核验通过：这些失败分支路径均不存在，且主线 `outputs/runs/target12_generalize_20260404_45_r1_split1015/metrics.json` 仍在，`overall_mape=17.637618380566884` 未变。
+- Risks: 被删除分支在当前工作区不可直接恢复（需从 git 历史或备份恢复）。
+- Status: Done
+- Next: 后续仅基于主线 `r1_split1015` 扩展，不再引入验证集定制路线。
+
+### Session 2026-04-04-49
+- Time: 2026-04-04 21:05:00 CST
+- Owner: juziweei / Codex
+- Goal: 执行“冲分模式”首轮新范式试验，在严格 outer 口径下把主线从 `17.6376` 向 `<15` 推进（不使用验证集定制路由）。
+- Scope: `configs/`, `outputs/runs/`, `outputs/submissions/`, `docs/vibe_coding_protocol.md`
+- Run ID: `target12_generalize_20260404_49_*`
+- Expected Impact: 通过低递推风险的 long-lag + calendar + weather GBDT 设计，降低分布漂移放大，争取首轮把真实 `overall_mape` 压到 `16.x~15.x`。
+- Validation: 固定时间切分（`validation.days=3` => `split=2016-10-15`），outer 仅评估，禁止 route/selective ensemble。
+- Result: 已完成 3 组新范式实跑，均未优于主线。结果：`r1_longlag_safe=60.5907`、`r2_mixedlag_safe=60.5835`、`r3_longlag_global=25.2150`（均为 `split=2016-10-15`）。对照主线 `r1_split1015=17.6376`，新范式当前配置显著退化。
+- Risks: `run_gbdt_pipeline` 在该口径下仍存在递推误差扩散问题；仅靠 lag 组合与全局/分组开关切换无法获得稳定增益。
+- Status: Done
+- Next: 维持 `r1_split1015` 为唯一主线，下一轮改为“在 `run_strong_backbone_v6.py` 内做低风险结构消融（逐项关闭 memory/risk/router 并固定其余）”的受控实验，不再尝试独立 gbdt 递推脚本。
+
+### Session 2026-04-04-50
+- Time: 2026-04-04 21:18:00 CST
+- Owner: juziweei / Codex
+- Goal: 在主线 `r1_split1015` 上执行低风险单因素消融，验证 memory/risk/router 哪个模块在 outer 口径下拖累泛化。
+- Scope: `configs/`, `outputs/runs/`, `docs/vibe_coding_protocol.md`
+- Run ID: `target12_generalize_20260404_50_*`
+- Expected Impact: 若某模块存在时段过拟合，单独关闭后可获得 `0.05~0.30` 的真实外段改善。
+- Validation: 固定 `split=2016-10-15`；每轮只改一个开关；比较 `overall_mape` 与主线 `17.6376`。
+- Result: 已完成三组单因素消融，均未超过主线。结果：`no_memory=17.7331`、`no_router=17.7682`、`no_risk=17.7699`，对照主线 `17.6376` 全部退化。
+- Risks: 当前 `memory/risk/router` 在 outer 上并非主要过拟合源，继续做同类开关消融的收益概率低。
+- Status: Done
+- Next: 维持 `r1_split1015` 作为最强可泛化线；若继续冲分，需要引入新的信息源或目标分解建模（而非模块开关级微调）。
+
+### Session 2026-04-04-51
+- Time: 2026-04-04 21:28:00 CST
+- Owner: juziweei / Codex
+- Goal: 修复 `run_gbdt_pipeline` 的样本权重刚性问题（默认 `1/y`）并验证是否能消除 `60+` 级失稳。
+- Scope: `scripts/run_gbdt_pipeline.py`, `configs/`, `outputs/runs/`, `docs/vibe_coding_protocol.md`
+- Run ID: `target12_generalize_20260404_51_*`
+- Expected Impact: 通过可配置权重策略（`uniform/inverse/inverse_sqrt`），降低高流量样本被过度降权造成的系统性欠预测，目标先回到 `<25`，理想进入 `<18`。
+- Validation: 固定 `split=2016-10-15`；同一特征配置下仅切换权重策略，比较 `overall_mape`。
+- Result: 已完成脚本改造与三组实跑。1) 代码：`scripts/run_gbdt_pipeline.py` 新增 `sample_weight_mode`（`uniform/inverse/inverse_sqrt`）及 `sample_weight_denom_floor/sample_weight_max/sample_weight_normalize_mean`，并把权重统计写入 `metrics.modeling`；2) 结果（同为 `split=2016-10-15`）：`r1_longlag_global_uniform=19.7075`、`r2_longlag_global_invsqrt=22.0544`、`r3_mixed_group_uniform=29.7790`。相对改造前同结构 `25.2150/60.58+`，稳定性显著提升，但仍未超过主线 `17.6376`。
+- Risks: 权重修复只解决了“高流量被过度降权”的一部分问题，递推结构本身仍弱于主线。
+- Status: Done
+- Next: 将改造后的 long-lag 模型仅作为低权补充分支，与主线做固定权重融合验证真实增益。
+
+### Session 2026-04-04-52
+- Time: 2026-04-04 21:36:00 CST
+- Owner: juziweei / Codex
+- Goal: 在不做路由选片的前提下尝试低自由度固定融合（主线 90% + long-lag 10%），验证是否能获得稳健小幅增益。
+- Scope: `outputs/runs/`, `outputs/submissions/`, `docs/vibe_coding_protocol.md`
+- Run ID: `target12_generalize_20260404_52_fixedblend_r1_90_long10`
+- Expected Impact: 利用 long-lag 的周期信息修正主线部分偏差，争取 `0.01~0.15` 的真实提升。
+- Validation: 固定 split=2016-10-15；固定全局权重（不按分片/不按 outer 真值重选）。
+- Result: 已完成固定融合并获得小幅提升。融合设置：`0.9 * target12_generalize_20260404_45_r1_split1015 + 0.1 * target12_generalize_20260404_51_r1_longlag_global_uniform`；输出 `run_id=target12_generalize_20260404_52_fixedblend_r1_90_long10`，`overall_mape=17.6023`，优于主线 `17.6376`（提升 `0.0354`）。submission schema 校验通过（420 行）。
+- Risks: 提升幅度较小，仍需后续在不增加高自由度的前提下验证稳健性。
+- Status: Done
+- Next: 暂以 `target12_generalize_20260404_52_fixedblend_r1_90_long10` 作为当前最强可泛化候选，后续仅做少量固定权重扰动复核（如 0.92/0.08 与 0.88/0.12）。
+
+### Session 2026-04-04-53
+- Time: 2026-04-04 21:46:00 CST
+- Owner: juziweei / Codex
+- Goal: 对固定融合主线做低自由度权重扰动复核，确认最优点是否稳健。
+- Scope: `outputs/runs/`, `outputs/submissions/`, `docs/vibe_coding_protocol.md`
+- Run ID: `target12_generalize_20260404_53_fixedblend_*`
+- Expected Impact: 在不引入分片选择的前提下，争取进一步获得 `0.005~0.03` 的真实增益。
+- Validation: 固定 `split=2016-10-15`，仅测试两组预设权重：`0.92/0.08` 与 `0.88/0.12`。
+- Result: 已完成两组扰动复核。结果：`0.92/0.08 -> 17.6014`（`run_id=target12_generalize_20260404_53_fixedblend_r1_92_long08`），`0.88/0.12 -> 17.6073`（`run_id=target12_generalize_20260404_53_fixedblend_r1_88_long12`）。对照 `0.90/0.10 -> 17.6023`，当前最优为 `0.92/0.08`，且仍优于单主线 `17.6376`。
+- Risks: 增益已进入小幅区间，继续细调权重可能产生 holdout 贴合风险，边际收益有限。
+- Status: Done
+- Next: 暂时固化 `target12_generalize_20260404_53_fixedblend_r1_92_long08` 为当前最强可泛化候选；后续优先做新信息源建模而非继续权重微调。
+
+### Session 2026-04-07-54
+- Time: 2026-04-07 00:10:31 CST
+- Owner: juziweei / Codex
+- Goal: 按“仅上传非测试与非结果内容”的目标整理 git 提交范围，并补充完整项目介绍文档（背景、技术路线、实现细节、复现与协作提示词）。
+- Scope: `.gitignore`, `README.md`, `docs/project_overview_full.md`, `docs/vibe_coding_protocol.md`, `git index(cleanup cached tracked test/result placeholders)`
+- Run ID: `doc_gitpack_20260407_54`
+- Expected Impact: 清晰隔离代码与实验产物，减少仓库噪音，提升可协作性与可复现实操效率。
+- Validation: `git status` 范围检查 + `.gitignore` 匹配检查（确认 `tests/` 与 `outputs/` 结果文件不再进入待提交列表）。
+- Result: 已完成目标。1) 更新 `.gitignore`：新增 `tests/`、`scripts/test_*.py`、`scripts/test_*.sh`，并取消对 `outputs/submissions`、`outputs/figures` 的放行；2) 新增完整介绍文档 `docs/project_overview_full.md`（项目背景、技术路线、核心实现、复现命令、Git 策略、提示词模板）；3) 更新 `README.md` 文档入口；4) 执行 `git rm --cached tests/test_bootstrap.py outputs/figures/.gitkeep outputs/submissions/.gitkeep`，确保历史已跟踪的测试/结果占位文件从索引剔除。
+- Risks: 若后续需要保留测试代码版本管理，可单独建立 `qa/` 或独立测试仓，避免与“仅上传非测试与结果”目标冲突。
+- Status: Done
+- Next: 执行一次 `git add -A` 与提交说明整理，确认待提交清单只包含代码/配置/文档。

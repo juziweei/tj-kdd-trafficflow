@@ -1,0 +1,55 @@
+{
+  "run_id": "target12_generalize_20260404_51_r2_longlag_global_invsqrt",
+  "paths": {
+    "train_volume_csv": "data/raw/dataset_60/training/volume(table 6)_training.csv",
+    "test_volume_csv": "data/raw/dataset_60/testing_phase1/volume(table 6)_test1.csv",
+    "train_weather_csv": "data/raw/dataset_60/training/weather (table 7)_training.csv",
+    "test_weather_csv": "data/raw/dataset_60/testing_phase1/weather (table 7)_test1.csv"
+  },
+  "validation": {
+    "days": 3
+  },
+  "rolling_validation": {
+    "n_folds": 0,
+    "val_days": 2,
+    "min_train_days": 10
+  },
+  "target": {
+    "horizon_windows": 6
+  },
+  "feature": {
+    "lags": [72, 144, 216, 288, 432, 504],
+    "rolling_window": 6,
+    "use_weather": true,
+    "use_calendar": true,
+    "weather_columns": [
+      "weather_pressure",
+      "weather_sea_pressure",
+      "weather_wind_speed",
+      "weather_temperature",
+      "weather_rel_humidity",
+      "weather_precipitation",
+      "weather_wind_dir_cos"
+    ]
+  },
+  "model": {
+    "n_estimators": 900,
+    "max_depth": 5,
+    "learning_rate": 0.02,
+    "subsample": 0.85,
+    "colsample_bytree": 0.85,
+    "reg_alpha": 0.1,
+    "reg_lambda": 5.0,
+    "min_child_weight": 3.0,
+    "gamma": 0.0,
+    "group_min_samples": 9999,
+    "use_log_target": true,
+    "log_pred_clip": 6.0,
+    "seed": 42,
+    "n_jobs": 6,
+    "sample_weight_mode": "inverse_sqrt",
+    "sample_weight_denom_floor": 1.0,
+    "sample_weight_max": 20.0,
+    "sample_weight_normalize_mean": true
+  }
+}

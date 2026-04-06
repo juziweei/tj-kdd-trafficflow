@@ -1,0 +1,23 @@
+{
+  "run_id": "baseline_weather_20260327_01",
+  "paths": {
+    "train_volume_csv": "data/raw/dataset_60/training/volume(table 6)_training.csv",
+    "test_volume_csv": "data/raw/dataset_60/testing_phase1/volume(table 6)_test1.csv",
+    "train_weather_csv": "data/raw/dataset_60/training/weather (table 7)_training.csv",
+    "test_weather_csv": "data/raw/dataset_60/testing_phase1/weather (table 7)_test1.csv"
+  },
+  "validation": {
+    "days": 7
+  },
+  "target": {
+    "horizon_windows": 6
+  },
+  "feature": {
+    "lags": [1, 2, 3, 6, 72, 504],
+    "rolling_window": 6,
+    "use_weather": true
+  },
+  "model": {
+    "ridge_alpha": 5.0
+  }
+}

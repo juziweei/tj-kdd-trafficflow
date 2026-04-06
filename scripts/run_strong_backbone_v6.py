@@ -73,8 +73,12 @@ class GBDTBundle:
     feature_names: list[str]
     use_log_target: bool
     log_pred_clip: float
+    target_transform: str
+    transform_clip_max: float | None
+    boxcox_lambda: float
     global_model: XGBRegressor
     anchor_models: dict[int, XGBRegressor]
+    training_stats: dict[str, object]
 
 
 @dataclass
@@ -824,23 +828,232 @@ def build_training_dataset(
     return x_df, y, meta_df
 
 
+def _resolve_target_transform(model_cfg: dict) -> str:
+    transform_raw = model_cfg.get("target_transform")
+    if transform_raw is None:
+        transform_raw = "log1p" if bool(model_cfg.get("use_log_target", True)) else "none"
+    transform = str(transform_raw).strip().lower()
+    aliases = {
+        "identity": "none",
+        "raw": "none",
+        "log": "log1p",
+    }
+    transform = aliases.get(transform, transform)
+    allowed = {"none", "log1p", "sqrt", "asinh", "boxcox"}
+    if transform not in allowed:
+        raise ValueError(f"Unsupported target_transform: {transform}")
+    return transform
+
+
+def _resolve_transform_clip_max(model_cfg: dict, target_transform: str) -> float | None:
+    raw = model_cfg.get("target_clip_max")
+    if raw is not None and np.isfinite(float(raw)):
+        return float(raw)
+    if target_transform == "log1p":
+        return float(model_cfg.get("log_pred_clip", 6.0))
+    return None
+
+
+def _apply_target_transform(y_raw: np.ndarray, target_transform: str, boxcox_lambda: float = 0.0) -> np.ndarray:
+    y_pos = np.clip(y_raw.astype(float), 0.0, None)
+    if target_transform == "none":
+        return y_pos
+    if target_transform == "log1p":
+        return np.log1p(y_pos)
+    if target_transform == "sqrt":
+        return np.sqrt(y_pos)
+    if target_transform == "asinh":
+        return np.arcsinh(y_pos)
+    if target_transform == "boxcox":
+        y_pos = y_pos + 1.0  # shift to avoid zero
+        if abs(boxcox_lambda) < 1e-8:
+            return np.log(y_pos)
+        return (np.power(y_pos, boxcox_lambda) - 1.0) / boxcox_lambda
+    raise ValueError(f"Unsupported target_transform: {target_transform}")
+
+
+def _inverse_target_transform(y_pred: np.ndarray, target_transform: str, boxcox_lambda: float = 0.0) -> np.ndarray:
+    if target_transform == "none":
+        out = y_pred
+    elif target_transform == "log1p":
+        out = np.expm1(y_pred)
+    elif target_transform == "sqrt":
+        out = y_pred * y_pred
+    elif target_transform == "asinh":
+        out = np.sinh(y_pred)
+    elif target_transform == "boxcox":
+        if abs(boxcox_lambda) < 1e-8:
+            out = np.exp(y_pred) - 1.0
+        else:
+            out = np.power(boxcox_lambda * y_pred + 1.0, 1.0 / boxcox_lambda) - 1.0
+    else:
+        raise ValueError(f"Unsupported target_transform: {target_transform}")
+    return np.clip(out, 0.0, None)
+
+
+def _build_base_sample_weight(y_raw: np.ndarray, training_cfg: dict) -> np.ndarray:
+    mode = str(training_cfg.get("sample_weight_mode", "inv")).strip().lower()
+    min_den = float(training_cfg.get("sample_weight_min_den", 1.0))
+    min_den = max(min_den, 1e-6)
+
+    if mode in {"none", "uniform"}:
+        base = np.ones_like(y_raw, dtype=float)
+    elif mode in {"inv", "inverse"}:
+        base = 1.0 / np.maximum(y_raw, min_den)
+    elif mode in {"inv_sqrt", "inverse_sqrt"}:
+        base = 1.0 / np.sqrt(np.maximum(y_raw, min_den))
+    elif mode in {"power", "inv_power"}:
+        power = float(training_cfg.get("sample_weight_power", 1.0))
+        base = 1.0 / np.maximum(y_raw, min_den) ** max(power, 0.0)
+    else:
+        raise ValueError(f"Unsupported sample_weight_mode: {mode}")
+    return base
+
+
+def _apply_night_downweight(
+    sample_weight: np.ndarray,
+    meta_train: pd.DataFrame,
+    training_cfg: dict,
+) -> np.ndarray:
+    night_weight = float(training_cfg.get("night_weight", 1.0))
+    if abs(night_weight - 1.0) < 1e-12:
+        return sample_weight
+    if "time_window" not in meta_train.columns:
+        return sample_weight
+
+    hours_raw = training_cfg.get("night_hours", [23, 0, 1])
+    if not isinstance(hours_raw, list):
+        return sample_weight
+    night_hours: set[int] = set()
+    for x in hours_raw:
+        try:
+            h = int(x)
+        except (TypeError, ValueError):
+            continue
+        if 0 <= h <= 23:
+            night_hours.add(h)
+    if not night_hours:
+        return sample_weight
+
+    ts = pd.to_datetime(meta_train["time_window"])
+    hour_arr = ts.dt.hour.to_numpy(dtype=int)
+    is_night = np.isin(hour_arr, list(night_hours))
+    if np.any(is_night):
+        sample_weight = sample_weight.copy()
+        sample_weight[is_night] *= night_weight
+    return sample_weight
+
+
+def _apply_gaussian_loss_reweight(
+    x_train: pd.DataFrame,
+    target: np.ndarray,
+    sample_weight: np.ndarray,
+    target_mask: np.ndarray,
+    model_cfg: dict,
+    training_cfg: dict,
+) -> tuple[np.ndarray, dict[str, object]]:
+    if not bool(training_cfg.get("gaussian_loss_reweight", False)):
+        return sample_weight, {"enabled": 0, "reason": "disabled_by_config"}
+
+    min_samples = int(training_cfg.get("glw_min_samples", 64))
+    if len(target) < min_samples:
+        return sample_weight, {"enabled": 0, "reason": "insufficient_samples", "min_samples": int(min_samples)}
+
+    pilot = make_xgb(model_cfg)
+    pilot.fit(x_train, target, sample_weight=sample_weight)
+    pilot_pred = pilot.predict(x_train)
+    residual_abs = np.abs(target - pilot_pred)
+
+    pool_mask = np.ones(len(target), dtype=bool)
+    if bool(training_cfg.get("glw_target_only", True)):
+        pool_mask = target_mask.copy()
+    if int(pool_mask.sum()) < max(8, int(min_samples // 2)):
+        pool_mask = np.ones(len(target), dtype=bool)
+
+    pool = residual_abs[pool_mask]
+    center_mode = str(training_cfg.get("glw_center", "median")).strip().lower()
+    if center_mode == "mean":
+        center = float(np.mean(pool))
+    else:
+        center_mode = "median"
+        center = float(np.median(pool))
+
+    mad = float(np.median(np.abs(pool - np.median(pool))))
+    robust_sigma = 1.4826 * mad
+    std_sigma = float(np.std(pool))
+    sigma_scale = float(training_cfg.get("glw_sigma_scale", 1.0))
+    min_sigma = float(training_cfg.get("glw_min_sigma", 1e-3))
+    sigma = max(robust_sigma, std_sigma, min_sigma) * max(sigma_scale, 1e-3)
+
+    z = (residual_abs - center) / sigma
+    multiplier = np.exp(-0.5 * np.square(z))
+    pool_mean = float(np.mean(multiplier[pool_mask])) if np.any(pool_mask) else 1.0
+    if np.isfinite(pool_mean) and pool_mean > 1e-12:
+        multiplier = multiplier / pool_mean
+
+    blend = float(np.clip(float(training_cfg.get("glw_blend", 1.0)), 0.0, 1.0))
+    multiplier = (1.0 - blend) + blend * multiplier
+
+    min_mult = float(training_cfg.get("glw_min_multiplier", 0.25))
+    max_mult = float(training_cfg.get("glw_max_multiplier", 1.75))
+    if max_mult < min_mult:
+        max_mult = min_mult
+    multiplier = np.clip(multiplier, min_mult, max_mult)
+
+    apply_target_only = bool(training_cfg.get("glw_apply_target_only", False))
+    if apply_target_only:
+        mask = pool_mask
+        scaled_weight = sample_weight.copy()
+        scaled_weight[mask] = scaled_weight[mask] * multiplier[mask]
+    else:
+        scaled_weight = sample_weight * multiplier
+
+    stats = {
+        "enabled": 1,
+        "min_samples": int(min_samples),
+        "target_only": int(bool(training_cfg.get("glw_target_only", True))),
+        "apply_target_only": int(apply_target_only),
+        "pool_count": int(np.sum(pool_mask)),
+        "center_mode": center_mode,
+        "center": center,
+        "robust_sigma": robust_sigma,
+        "std_sigma": std_sigma,
+        "sigma": sigma,
+        "blend": blend,
+        "min_multiplier": min_mult,
+        "max_multiplier": max_mult,
+        "multiplier_mean": float(np.mean(multiplier)),
+        "multiplier_std": float(np.std(multiplier)),
+    }
+    return scaled_weight, stats
+
+
 def make_xgb(model_cfg: dict) -> XGBRegressor:
-    return XGBRegressor(
-        n_estimators=int(model_cfg.get("n_estimators", 500)),
-        max_depth=int(model_cfg.get("max_depth", 4)),
-        learning_rate=float(model_cfg.get("learning_rate", 0.03)),
-        subsample=float(model_cfg.get("subsample", 0.85)),
-        colsample_bytree=float(model_cfg.get("colsample_bytree", 0.85)),
-        reg_alpha=float(model_cfg.get("reg_alpha", 0.0)),
-        reg_lambda=float(model_cfg.get("reg_lambda", 4.0)),
-        min_child_weight=float(model_cfg.get("min_child_weight", 3.0)),
-        gamma=float(model_cfg.get("gamma", 0.2)),
-        objective="reg:squarederror",
-        tree_method="hist",
-        random_state=int(model_cfg.get("seed", 42)),
-        n_jobs=int(model_cfg.get("n_jobs", 6)),
-        verbosity=0,
-    )
+    objective = str(model_cfg.get("objective", "reg:squarederror")).strip()
+    params: dict[str, object] = {
+        "n_estimators": int(model_cfg.get("n_estimators", 500)),
+        "max_depth": int(model_cfg.get("max_depth", 4)),
+        "learning_rate": float(model_cfg.get("learning_rate", 0.03)),
+        "subsample": float(model_cfg.get("subsample", 0.85)),
+        "colsample_bytree": float(model_cfg.get("colsample_bytree", 0.85)),
+        "reg_alpha": float(model_cfg.get("reg_alpha", 0.0)),
+        "reg_lambda": float(model_cfg.get("reg_lambda", 4.0)),
+        "min_child_weight": float(model_cfg.get("min_child_weight", 3.0)),
+        "gamma": float(model_cfg.get("gamma", 0.2)),
+        "objective": objective,
+        "tree_method": "hist",
+        "random_state": int(model_cfg.get("seed", 42)),
+        "n_jobs": int(model_cfg.get("n_jobs", 6)),
+        "verbosity": 0,
+    }
+    if "max_delta_step" in model_cfg:
+        params["max_delta_step"] = float(model_cfg.get("max_delta_step", 0.0))
+    if objective == "reg:pseudohubererror":
+        params["huber_slope"] = float(model_cfg.get("huber_slope", 1.0))
+    eval_metric = model_cfg.get("eval_metric")
+    if isinstance(eval_metric, str) and eval_metric.strip():
+        params["eval_metric"] = eval_metric.strip()
+    return XGBRegressor(**params)
 
 
 def train_gbdt_bundle(
@@ -851,16 +1064,19 @@ def train_gbdt_bundle(
     model_cfg: dict,
     training_cfg: dict | None = None,
 ) -> GBDTBundle:
-    use_log_target = bool(model_cfg.get("use_log_target", True))
-    log_pred_clip = float(model_cfg.get("log_pred_clip", 6.0))
+    target_transform = _resolve_target_transform(model_cfg)
+    transform_clip_max = _resolve_transform_clip_max(model_cfg, target_transform)
+    boxcox_lambda = float(model_cfg.get("boxcox_lambda", 0.0))
+    use_log_target = target_transform == "log1p"
+    log_pred_clip = float(transform_clip_max) if (transform_clip_max is not None and use_log_target) else 6.0
     training_cfg = training_cfg or {}
     use_anchor_models = bool(training_cfg.get("use_anchor_models", True))
     min_anchor_samples = int(training_cfg.get("min_anchor_samples", 120))
     max_sample_weight = float(training_cfg.get("max_sample_weight", 100.0))
 
     y_raw = y_train.to_numpy(dtype=float)
-    target = np.log1p(y_raw) if use_log_target else y_raw
-    sample_weight = 1.0 / np.maximum(y_raw, 1.0)
+    target = _apply_target_transform(y_raw, target_transform, boxcox_lambda)
+    sample_weight = _build_base_sample_weight(y_raw, training_cfg)
     target_window_weight = float(training_cfg.get("target_window_weight", 1.0))
     off_target_weight = float(training_cfg.get("off_target_weight", 0.3))
     min_sample_weight = float(training_cfg.get("min_sample_weight", 0.05))
@@ -869,6 +1085,8 @@ def train_gbdt_bundle(
         target_mask = meta_train["is_target"].to_numpy(dtype=int) > 0
         time_weight = np.where(target_mask, target_window_weight, off_target_weight)
         sample_weight = sample_weight * time_weight
+
+    sample_weight = _apply_night_downweight(sample_weight, meta_train, training_cfg)
 
     # Tail-aware reweighting: emphasize extreme-volume windows while keeping leakage-safe chronology.
     tail_q_raw = training_cfg.get("tail_weight_quantile")
@@ -906,6 +1124,19 @@ def train_gbdt_bundle(
 
             sample_weight = sample_weight * tail_scale
 
+    sample_weight = np.nan_to_num(sample_weight, nan=min_sample_weight, posinf=max_sample_weight, neginf=min_sample_weight)
+    sample_weight = np.clip(sample_weight, a_min=min_sample_weight, a_max=None)
+    sample_weight = np.clip(sample_weight, a_min=None, a_max=max_sample_weight)
+
+    sample_weight, glw_stats = _apply_gaussian_loss_reweight(
+        x_train=x_train[feature_names],
+        target=target,
+        sample_weight=sample_weight,
+        target_mask=target_mask,
+        model_cfg=model_cfg,
+        training_cfg=training_cfg,
+    )
+    sample_weight = np.nan_to_num(sample_weight, nan=min_sample_weight, posinf=max_sample_weight, neginf=min_sample_weight)
     sample_weight = np.clip(sample_weight, a_min=min_sample_weight, a_max=None)
     sample_weight = np.clip(sample_weight, a_min=None, a_max=max_sample_weight)
 
@@ -930,8 +1161,17 @@ def train_gbdt_bundle(
         feature_names=feature_names,
         use_log_target=use_log_target,
         log_pred_clip=log_pred_clip,
+        target_transform=target_transform,
+        transform_clip_max=transform_clip_max,
+        boxcox_lambda=boxcox_lambda,
         global_model=global_model,
         anchor_models=anchor_models,
+        training_stats={
+            "gaussian_loss_reweight": glw_stats,
+            "sample_weight_min": float(np.min(sample_weight)) if len(sample_weight) > 0 else 0.0,
+            "sample_weight_max": float(np.max(sample_weight)) if len(sample_weight) > 0 else 0.0,
+            "sample_weight_mean": float(np.mean(sample_weight)) if len(sample_weight) > 0 else 0.0,
+        },
     )
 
 
@@ -939,10 +1179,10 @@ def predict_gbdt(bundle: GBDTBundle, x_row: pd.DataFrame, ts: pd.Timestamp) -> f
     anchor = anchor_bucket(ts)
     model = bundle.anchor_models.get(anchor, bundle.global_model)
     raw = float(model.predict(x_row[bundle.feature_names])[0])
-    if bundle.use_log_target:
-        raw = min(raw, bundle.log_pred_clip)
-        return max(0.0, float(np.expm1(raw)))
-    return max(0.0, raw)
+    if bundle.transform_clip_max is not None and np.isfinite(bundle.transform_clip_max):
+        raw = min(raw, float(bundle.transform_clip_max))
+    pred = _inverse_target_transform(np.asarray([raw], dtype=float), bundle.target_transform, bundle.boxcox_lambda)[0]
+    return max(0.0, float(pred))
 
 
 def run_gbdt_recursive_forecast(
@@ -4045,6 +4285,19 @@ def main() -> None:
         rolling_window=int(cfg["feature"]["rolling_window"]),
         enhanced_strict_past_only=enhanced_cfg.get("strict_past_only"),
         enhanced_slot_stats=enhanced_cfg.get("slot_stats"),
+        enhanced_recent_stats=enhanced_cfg.get("recent_stats"),
+        enhanced_rush_stats=enhanced_cfg.get("rush_stats"),
+        enhanced_alignment=enhanced_cfg.get("alignment"),
+        enhanced_dense_slice_gating=enhanced_cfg.get("dense_slice_gating"),
+        enhanced_dense_target_slices=tuple(enhanced_cfg.get("dense_target_slices", []))
+        if isinstance(enhanced_cfg.get("dense_target_slices"), list)
+        else None,
+        enhanced_dense_slice_feature_groups={
+            str(k): tuple(v) if isinstance(v, list) else v
+            for k, v in enhanced_cfg.get("dense_slice_feature_groups", {}).items()
+        }
+        if isinstance(enhanced_cfg.get("dense_slice_feature_groups"), dict)
+        else None,
         enhanced_trend=enhanced_cfg.get("trend"),
         enhanced_volatility=enhanced_cfg.get("volatility"),
         enhanced_weather_interactions=enhanced_cfg.get("weather_interactions"),
@@ -4719,6 +4972,10 @@ def main() -> None:
         "gbdt_model_target": cfg.get("gbdt_model_target", cfg.get("gbdt_model", {})),
         "gbdt_training_full": gbdt_training_full_cfg,
         "gbdt_training_target": gbdt_training_target_cfg,
+        "gbdt_training_runtime": {
+            "full": final_gbdt_full.training_stats,
+            "target": final_gbdt_target.training_stats,
+        },
         "fusion": {
             "global_linear_weight": float(final_fusion.global_weights.global_weights[0]),
             "global_gbdt_full_weight": float(final_fusion.global_weights.global_weights[1]),

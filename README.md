@@ -27,3 +27,8 @@ Competition-first implementation for highway tollgate traffic-flow forecasting, 
 - Time-based split only (no random shuffle for validation).
 - Any feature must use only historical information at prediction time.
 - Each run should record config hash and metric summary.
+
+## Documentation
+- Full project introduction: `docs/project_overview_full.md`
+- Architecture design: `docs/design.md`
+- Session protocol and progress log: `docs/vibe_coding_protocol.md`

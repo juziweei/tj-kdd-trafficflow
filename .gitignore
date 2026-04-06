@@ -4,6 +4,7 @@ __pycache__/
 *.so
 .venv/
 venv/
+.codex
 
 # Data artifacts
 data/raw/*
@@ -12,8 +13,11 @@ data/processed/*
 !data/processed/.gitkeep
 outputs/*
 !outputs/.gitkeep
-!outputs/submissions/
-!outputs/figures/
+
+# Tests and local verification artifacts
+tests/
+scripts/test_*.py
+scripts/test_*.sh
 
 # Notebooks
 .ipynb_checkpoints/
