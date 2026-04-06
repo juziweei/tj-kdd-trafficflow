@@ -865,3 +865,29 @@
 - Risks: 若后续需要保留测试代码版本管理，可单独建立 `qa/` 或独立测试仓，避免与“仅上传非测试与结果”目标冲突。
 - Status: Done
 - Next: 执行一次 `git add -A` 与提交说明整理，确认待提交清单只包含代码/配置/文档。
+
+### Session 2026-04-07-55
+- Time: 2026-04-07 00:55:33 CST
+- Owner: juziweei / Codex
+- Goal: 产出 SCI 风格实验可视化（5图）与完整技术报告（路线、架构、细节、复现），并基于真实 run 指标自动汇总。
+- Scope: `scripts/plot_sci_figures.py`, `outputs/figures/sci/*`, `docs/figure_manifest.md`, `docs/sci_report.md`, `docs/technical_route_architecture.md`, `docs/vibe_coding_protocol.md`
+- Run ID: `sci_viz_report_20260407_55`
+- Expected Impact: 形成可直接用于论文/答辩/公开仓库展示的高质量图文材料，减少手工统计误差。
+- Validation: 运行绘图脚本自动扫描 `outputs/runs/**/metrics.json` 与 `validation_error_slices.csv`，检查图表文件完整生成（PNG+PDF）并在 manifest 中记录过滤日志与数据来源。
+- Result: 已完成。1) 新增脚本 `scripts/plot_sci_figures.py`，自动完成 run 扫描、异常过滤、代表 run 选取、5 张 SCI 风格图绘制（统一字体/配色/线宽，PNG 600dpi + PDF）；2) 生成图表与索引：`outputs/figures/sci/figure{1..5}_*.{png,pdf}`、`outputs/figures/sci/run_summary.csv`、`docs/figure_manifest.md`；3) 生成报告文档：`docs/sci_report.md` 与 `docs/technical_route_architecture.md`，均基于真实 run_id 与真实数值；4) 扫描统计：候选 run=304，有效 run=301，过滤 `missing_metrics_block=3`（见 manifest）。
+- Risks: 代表 run 选择默认排除了明显“验证定制型” route/oracle 路线用于主图对比；若目标改为“纯最低分展示”，需放宽选择规则并在图注中标注过拟合风险。
+- Status: Done
+- Next: 若用于论文提交，建议补充图中显著性统计（如跨 fold 置信区间）与外层时间窗复验结果。
+
+### Session 2026-04-07-56
+- Time: 2026-04-07 01:05:54 CST
+- Owner: juziweei / Codex
+- Goal: 将当前图文成果上传到 Git，并把“仅上传非测试/非结果内容”的发布要求固化为可复用 skill。
+- Scope: `.agents/skills/`(new skill), `docs/vibe_coding_protocol.md`, git commit/push
+- Run ID: `git_publish_skill_20260407_56`
+- Expected Impact: 后续可一键复用同一上传规范，降低误提交测试与结果产物的风险。
+- Validation: `git status` + `git ls-files tests 'outputs/**'` + 提交后远端同步检查。
+- Result: 已完成。1) 新增 skill：`.agents/skills/git-clean-publish/SKILL.md`，固化“仅上传非测试/非结果内容”的完整流程（检查、清理、提交、推送、失败处理）；2) 已完成发布前检查：`git check-ignore` 命中 `tests/`、`outputs/*`、`scripts/test_*.py` 规则，`git ls-files tests 'outputs/**'` 仅保留 `outputs/.gitkeep`；3) 本次上传内容包含 SCI 绘图脚本与文档产物（不含测试与结果目录）。
+- Risks: 历史分支若已跟踪测试/结果文件，仍需按 skill 指南执行 `git rm --cached` 清理。
+- Status: Done
+- Next: 后续复用该 skill 执行统一发布流程，避免重复手工检查。
