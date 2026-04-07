@@ -1,0 +1,49 @@
+<svg xmlns="http://www.w3.org/2000/svg" width="1200" height="420" viewBox="0 0 1200 420" role="img" aria-labelledby="title desc">
+  <title id="title">KDD Traffic Flow Forecasting</title>
+  <desc id="desc">Project banner with key results and constraints.</desc>
+  <defs>
+    <linearGradient id="bg" x1="0" y1="0" x2="1" y2="1">
+      <stop offset="0%" stop-color="#0f1b2d"/>
+      <stop offset="100%" stop-color="#1f4b6e"/>
+    </linearGradient>
+    <linearGradient id="card" x1="0" y1="0" x2="1" y2="1">
+      <stop offset="0%" stop-color="#ffffff" stop-opacity="0.20"/>
+      <stop offset="100%" stop-color="#ffffff" stop-opacity="0.08"/>
+    </linearGradient>
+    <style>
+      .title { font: 700 40px 'Segoe UI', 'PingFang SC', sans-serif; fill: #ffffff; }
+      .sub { font: 400 20px 'Segoe UI', 'PingFang SC', sans-serif; fill: #dce9f5; }
+      .label { font: 600 14px 'Segoe UI', 'PingFang SC', sans-serif; fill: #9dc6e7; letter-spacing: 1px; }
+      .metric { font: 700 36px 'Segoe UI', sans-serif; fill: #ffffff; }
+      .tiny { font: 400 14px 'Segoe UI', 'PingFang SC', sans-serif; fill: #dce9f5; }
+    </style>
+  </defs>
+
+  <rect width="1200" height="420" rx="24" fill="url(#bg)"/>
+
+  <text x="56" y="92" class="title">KDD-CUP-2017 Traffic Flow Forecasting</text>
+  <text x="56" y="132" class="sub">Competition-first pipeline with anti-leakage and reproducibility as hard constraints</text>
+
+  <g transform="translate(56,182)">
+    <rect width="320" height="172" rx="16" fill="url(#card)" stroke="#79add8" stroke-opacity="0.35"/>
+    <text x="22" y="38" class="label">IN-SPLIT BEST MAPE</text>
+    <text x="22" y="94" class="metric">14.95</text>
+    <text x="22" y="134" class="tiny">auto42 r8 accepted under stability gates</text>
+  </g>
+
+  <g transform="translate(410,182)">
+    <rect width="320" height="172" rx="16" fill="url(#card)" stroke="#79add8" stroke-opacity="0.35"/>
+    <text x="22" y="38" class="label">OUTER GENERALIZATION</text>
+    <text x="22" y="94" class="metric">17.60</text>
+    <text x="22" y="134" class="tiny">fixed blend 0.92 single + 0.08 long-lag aux</text>
+  </g>
+
+  <g transform="translate(764,182)">
+    <rect width="380" height="172" rx="16" fill="url(#card)" stroke="#79add8" stroke-opacity="0.35"/>
+    <text x="22" y="38" class="label">HARD CONSTRAINTS</text>
+    <text x="22" y="74" class="tiny">- time split only</text>
+    <text x="22" y="100" class="tiny">- run_id for every experiment</text>
+    <text x="22" y="126" class="tiny">- schema-valid submission required</text>
+    <text x="22" y="152" class="tiny">- no future-data leakage</text>
+  </g>
+</svg>

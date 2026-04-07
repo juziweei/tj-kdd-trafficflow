@@ -917,3 +917,16 @@
 - Risks: 讲解材料若过长可能影响演示节奏，需在文档中区分“完整版”和“15分钟压缩版”。
 - Status: Done
 - Next: 如需继续收敛，可在下一轮增加“8 分钟压缩讲稿”和“导师高频追问答复卡片”两个文件，形成短讲+问答双模式。
+
+### Session 2026-04-07-59
+- Time: 2026-04-07 10:56:50 CST
+- Owner: juziweei / Codex
+- Goal: 优化仓库 README 展示效果，新增可视化图片并形成更清晰的项目介绍首页。
+- Scope: `README.md`, `docs/project_intro/assets/`, `docs/vibe_coding_protocol.md`
+- Run ID: `readme_visual_refresh_20260407_59`
+- Expected Impact: 提升仓库首页可读性与展示质量，让非技术读者快速理解目标、结果、路线与复现方式。
+- Validation: Markdown 结构检查 + 图片路径可达性检查 + `git status` 变更范围检查。
+- Result: 已完成 README 可视化改造。1) 重写 `README.md` 首屏结构，新增 badges、价值说明、技术路线、快速开始、治理闭环和答辩资料入口；2) 新增本地图片资产 `docs/project_intro/assets/{hero_banner.svg,pipeline_overview.svg,governance_loop.svg}`，避免外链失效；3) README 内所有图片均使用仓库相对路径引用，可在 GitHub 页面直接渲染。
+- Risks: 图片过多可能分散注意力，需要控制在“信息增强”而非“视觉噪音”。
+- Status: Done
+- Next: 若继续打磨展示，可补一张“实验结果时间线图（run_id -> mape）”并在 README 中加入 collapsible 的“详细复盘”区域，兼顾首屏简洁与深度信息。

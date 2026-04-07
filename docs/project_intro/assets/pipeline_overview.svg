@@ -1,0 +1,49 @@
+<svg xmlns="http://www.w3.org/2000/svg" width="1200" height="260" viewBox="0 0 1200 260" role="img" aria-labelledby="title desc">
+  <title id="title">Pipeline Overview</title>
+  <desc id="desc">Model evolution from baseline to post-process.</desc>
+  <defs>
+    <style>
+      .box { fill: #f5f8fc; stroke: #2f6ea3; stroke-width: 2; rx: 14; }
+      .head { font: 700 18px 'Segoe UI', 'PingFang SC', sans-serif; fill: #1f3f5b; }
+      .txt { font: 400 13px 'Segoe UI', 'PingFang SC', sans-serif; fill: #38536b; }
+      .arrow { stroke: #2f6ea3; stroke-width: 3; marker-end: url(#arr); }
+    </style>
+    <marker id="arr" viewBox="0 0 10 10" refX="9" refY="5" markerWidth="7" markerHeight="7" orient="auto-start-reverse">
+      <path d="M0,0 L10,5 L0,10 z" fill="#2f6ea3"/>
+    </marker>
+  </defs>
+
+  <rect x="30" y="70" width="190" height="120" class="box"/>
+  <text x="52" y="104" class="head">Baseline</text>
+  <text x="52" y="130" class="txt">Ridge + leak-safe features</text>
+  <text x="52" y="150" class="txt">Build reproducible floor</text>
+
+  <line x1="225" y1="130" x2="265" y2="130" class="arrow"/>
+
+  <rect x="270" y="70" width="190" height="120" class="box"/>
+  <text x="292" y="104" class="head">GBDT</text>
+  <text x="292" y="130" class="txt">Global + grouped experts</text>
+  <text x="292" y="150" class="txt">Nonlinear capacity boost</text>
+
+  <line x1="465" y1="130" x2="505" y2="130" class="arrow"/>
+
+  <rect x="510" y="55" width="230" height="150" class="box"/>
+  <text x="532" y="94" class="head">Strong Backbone v6</text>
+  <text x="532" y="120" class="txt">Linear + dual GBDT experts</text>
+  <text x="532" y="140" class="txt">Tri-fusion + router + memory</text>
+  <text x="532" y="160" class="txt">Current main entrypoint</text>
+
+  <line x1="745" y1="130" x2="785" y2="130" class="arrow"/>
+
+  <rect x="790" y="70" width="190" height="120" class="box"/>
+  <text x="812" y="104" class="head">Fusion</text>
+  <text x="812" y="130" class="txt">Low-DOF fixed blending</text>
+  <text x="812" y="150" class="txt">Outer stability focused</text>
+
+  <line x1="985" y1="130" x2="1025" y2="130" class="arrow"/>
+
+  <rect x="1030" y="70" width="150" height="120" class="box"/>
+  <text x="1052" y="104" class="head">Post</text>
+  <text x="1052" y="130" class="txt">Bias correction</text>
+  <text x="1052" y="150" class="txt">Schema check</text>
+</svg>
