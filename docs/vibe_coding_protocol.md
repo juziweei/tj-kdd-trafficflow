@@ -891,3 +891,29 @@
 - Risks: 历史分支若已跟踪测试/结果文件，仍需按 skill 指南执行 `git rm --cached` 清理。
 - Status: Done
 - Next: 后续复用该 skill 执行统一发布流程，避免重复手工检查。
+
+### Session 2026-04-07-57
+- Time: 2026-04-07 09:45:00 CST
+- Owner: juziweei / Codex
+- Goal: 收敛技术路线与仓库导航，降低“入口过多 + 命名混乱”带来的协作成本。
+- Scope: `README.md`, `docs/`, `configs/`, `scripts/`, `docs/vibe_coding_protocol.md`
+- Run ID: `repo_clarity_cleanup_20260407_57`
+- Expected Impact: 不改模型逻辑与指标，仅通过“主线文档 + 目录索引 + 统一入口”把日常使用路径收敛到少量稳定文件。
+- Validation: 文档一致性检查 + 目录索引可达性检查；执行一次时间切分治理检查脚本，确认改动未破坏运行约束。
+- Result: 已完成最小收敛改造。1) 新增 `docs/START_HERE.md`，明确双主线（in-split 冲分线 + outer 泛化线）与日常最小流程；2) 新增索引 `docs/README.md`、`configs/README.md`、`scripts/README.md`，把“主入口/历史文件”分层说明；3) 重写 `README.md`，将仓库首页改为单入口导航并固化主线命令。治理检查执行：`python3 scripts/check_leakage_guardrails.py --config configs/strong_backbone_v6_density_r2_glw_r1_auto42_r8_score_shift.json --run-id repo_clarity_cleanup_20260407_57 --sample-size 12 --skip-artifact-check`，结果 `passed=6/6`，报告落盘 `outputs/runs/repo_clarity_cleanup_20260407_57/governance_check.json`。
+- Risks: 本轮未物理迁移/归档历史 `configs/*.json` 与历史脚本，根目录文件数量仍大；但已经提供统一导航入口，后续可按索引进行低风险分批归档。
+- Status: Done
+- Next: 若继续降噪，下一轮执行“仅移动历史配置到 `configs/archive/`（不删除）+ 批量更新文档引用”的低风险归档动作，并保持主线入口文件名不变。
+
+### Session 2026-04-07-58
+- Time: 2026-04-07 10:36:39 CST
+- Owner: juziweei / Codex
+- Goal: 新建一个专门用于“项目介绍/答辩讲解”的文档文件夹，沉淀20分钟讲稿、PPT讲解提纲与问答要点，支持非技术听众讲解。
+- Scope: `docs/project_intro/`, `docs/README.md`, `docs/vibe_coding_protocol.md`
+- Run ID: `intro_docs_pack_20260407_58`
+- Expected Impact: 将分散在对话中的讲解内容结构化落盘，形成可直接复用的介绍材料，降低答辩准备成本。
+- Validation: 目录与文件可读性检查 + `git status` 变更范围检查。
+- Result: 已完成介绍资料包落地。新增目录 `docs/project_intro/` 及 5 份文档：`README.md`、`01_answer_framework_6_questions.md`、`02_non_tech_20min_script.md`、`03_ppt_12_pages_talktrack.md`、`04_attempts_and_lessons.md`。内容覆盖六问答辩框架、20 分钟非技术口播稿、12 页 PPT 逐页讲解和关键尝试复盘，均可直接用于答辩准备与演示搭建。
+- Risks: 讲解材料若过长可能影响演示节奏，需在文档中区分“完整版”和“15分钟压缩版”。
+- Status: Done
+- Next: 如需继续收敛，可在下一轮增加“8 分钟压缩讲稿”和“导师高频追问答复卡片”两个文件，形成短讲+问答双模式。
