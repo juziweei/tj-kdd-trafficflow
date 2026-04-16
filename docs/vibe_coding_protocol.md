@@ -930,3 +930,42 @@
 - Risks: 图片过多可能分散注意力，需要控制在“信息增强”而非“视觉噪音”。
 - Status: Done
 - Next: 若继续打磨展示，可补一张“实验结果时间线图（run_id -> mape）”并在 README 中加入 collapsible 的“详细复盘”区域，兼顾首屏简洁与深度信息。
+
+### Session 2026-04-16-60
+- Time: 2026-04-16 14:22:09 CST
+- Owner: juziweei / Codex
+- Goal: 从历史草案中收敛主线文档，归档非主线资料，降低仓库认知噪音并保留审计可追溯性。
+- Scope: `docs/`, `docs/archive/`, `docs/README.md`, `docs/START_HERE.md`, `docs/vibe_coding_protocol.md`
+- Run ID: `docs_mainline_converge_20260416_60`
+- Expected Impact: 明确“当前执行入口”和“历史草案归档边界”，避免误读旧策略为当前主线。
+- Validation: 文件移动一致性检查 + 索引更新检查 + `git status` 范围检查。
+- Result: 已完成主线收敛与归档。1) 新建 `docs/archive/` 并迁移 7 份历史草案：`auto_iter_prompt_20260404.md`、`auto_iter_prompt_target12_generalize_20260404.md`、`execution_plan_20260329_v1.md`、`research_plan.md`、`project_summary.md`、`v7_upgrade_guide.md`、`v8_enhanced_features.md`；2) 更新 `docs/README.md` 的 Historical Notes 路径到 `archive/*` 并标注“仅审计回溯”；3) 更新 `docs/START_HERE.md`，明确小数据集默认验证口径为“固定时间切分/多时间连续小块验证”，不以 rolling 作为主选模依据。
+- Risks: 历史文档路径变化可能影响旧链接；通过在 `docs/README.md` 标注 archive 路径规避。
+- Status: Done
+- Next: 如需进一步降噪，下一轮可整理 `configs/` 与 `scripts/` 的历史项到对应 `archive/` 子目录，并保持当前主线文件名不变。
+
+### Session 2026-04-16-61
+- Time: 2026-04-16 14:26:22 CST
+- Owner: juziweei / Codex
+- Goal: 基于当前 in-split 主线配置执行一次可复现实跑训练，产出最新 run 结果供后续主线决策。
+- Scope: `outputs/runs/`, `outputs/submissions/`, `docs/vibe_coding_protocol.md`
+- Run ID: `mainline_train_20260416_61_auto42r8`
+- Expected Impact: 在不新增参数改动的前提下复验主线可运行性与指标口径一致性。
+- Validation: 固定时间切分 + 主线脚本输出 `metrics.json` 与 submission schema 校验。
+- Result: 已完成主线实跑并产出可复验结果。执行命令：`python3 scripts/run_strong_backbone_v6.py --config configs/strong_backbone_v6_density_r2_glw_r1_auto42_r8_score_shift.json --run-id mainline_train_20260416_61_auto42r8`。核心指标：`overall_mape=14.9426159697`；关键切片：`1_0_h3=30.4455`、`1_0_h6=21.0333`、`2_0_h5=20.9119`、`2_0_h6=18.5582`。产物：`outputs/runs/mainline_train_20260416_61_auto42r8/{metrics.json,validation_predictions.csv,validation_error_slices.csv}` 与 `outputs/submissions/submission_mainline_train_20260416_61_auto42r8.csv`。
+- Risks: 当前工作区含未提交文档变更，但不影响训练脚本运行；训练耗时受本机资源波动影响。
+- Status: Done
+- Next: 若按“小数据集不看 rolling”新口径继续推进，下一轮建议在固定时间块验证框架下仅做一个低耦合改动（优先 `1_0_h6`），并保持 run_id 可追溯。
+
+### Session 2026-04-16-62
+- Time: 2026-04-16 14:43:04 CST
+- Owner: juziweei / Codex
+- Goal: 产出甲方汇报详细版（10页结构），包含局限性、横向/竖向对比、论文方法映射与自研结构说明，并提交到 GitHub。
+- Scope: `docs/project_intro/`, `docs/vibe_coding_protocol.md`, git commit/push
+- Run ID: `client_brief_10p_20260416_62`
+- Expected Impact: 提供可直接用于甲方汇报与PPT制作的高密度文本底稿，提升汇报一致性与可审计性。
+- Validation: 文档结构完整性检查 + 指标口径核对（同 split 对比）+ GitHub 推送成功。
+- Result: 已完成详细汇报文档编写。新增 `docs/project_intro/05_client_10page_detailed_brief.md`，包含10页结构化汇报底稿（每页含目标、展示内容、讲稿、证据、追问预案），并纳入：1) 局限性与风险页；2) 同口径横向对比（split=2016-10-11）；3) 同口径竖向对比（split=2016-10-15）；4) 论文方法映射与自研结构边界说明。
+- Risks: 历史运行结果存在不同 split 口径，文档中需显式标注避免误比。
+- Status: Done
+- Next: 可在下一轮补充配套 `05_client_10page_detailed_brief.pptx`，按同页号直接落盘演示稿。
